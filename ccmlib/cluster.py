@@ -457,13 +457,18 @@ class Cluster(object):
                                allow_root=allow_root)
 
                 if uninitialised:
-                    # Prior to JDK8, starting every node at once could lead to a
-                    # nanotime collision where the RNG that generates a node's tokens
-                    # gives identical tokens to several nodes. Thus, we stagger
-                    # the node starts
-                    if common.get_jdk_version() < '1.8':
-                        time.sleep(1)
-                    node.watch_log_for("Finish joining ring", process=p, from_mark=mark)
+                    # bootstrapping nodes should boot sequentially
+                    node.wait_for_binary_interface(process=p, verbose=verbose, from_mark=mark)
+                    #node.watch_log_for("Finish joining ring", process=p, from_mark=mark)
+                    #time.sleep(5)
+                    
+                # Prior to JDK8, starting every node at once could lead to a
+                # nanotime collision where the RNG that generates a node's tokens
+                # gives identical tokens to several nodes. Thus, we stagger
+                # the node starts
+                elif common.get_jdk_version() < '1.8':
+                    time.sleep(1)
+
 
                 started.append((node, p, mark))
 
