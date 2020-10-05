@@ -17,7 +17,7 @@ import yaml
 from six import iteritems, print_
 
 from ccmlib import common, extension, repository
-from ccmlib.node import Node, NodeError, TimeoutError
+from ccmlib.node import Node, NodeError, Status, TimeoutError
 from six.moves import xrange
 try:
     from urllib.parse import urlparse
@@ -447,38 +447,30 @@ class Cluster(object):
         started = []
         for node in list(self.nodes.values()):
             if not node.is_running():
+                uninitialised = Status.UNINITIALIZED == node.status
                 mark = 0
                 if os.path.exists(node.logfilename()):
                     mark = node.mark_log()
 
-                p = node.start(update_pid=False, jvm_args=jvm_args, jvm_version=jvm_version,
+                p = node.start(wait_other_notice=False, update_pid=False, jvm_args=jvm_args, jvm_version=jvm_version,
                                profile_options=profile_options, verbose=verbose, quiet_start=quiet_start,
                                allow_root=allow_root)
 
-                # Prior to JDK8, starting every node at once could lead to a
-                # nanotime collision where the RNG that generates a node's tokens
-                # gives identical tokens to several nodes. Thus, we stagger
-                # the node starts
-                if common.get_jdk_version() < '1.8':
-                    time.sleep(1)
+                if uninitialised:
+                    # Prior to JDK8, starting every node at once could lead to a
+                    # nanotime collision where the RNG that generates a node's tokens
+                    # gives identical tokens to several nodes. Thus, we stagger
+                    # the node starts
+                    if common.get_jdk_version() < '1.8':
+                        time.sleep(1)
+                    node.watch_log_for("Finish joining ring", process=p, from_mark=mark)
 
                 started.append((node, p, mark))
 
         if no_wait:
             time.sleep(2)  # waiting 2 seconds to check for early errors and for the pid to be set
-        else:
-            for node, p, mark in started:
-                try:
-                    start_message = "Listening for thrift clients..." if self.cassandra_version() < "2.2" else "Starting listening for CQL clients"
-                    node.watch_log_for(start_message, timeout=kwargs.get('timeout',60), process=p, verbose=verbose, from_mark=mark)
-                except RuntimeError:
-                    return None
 
         self.__update_pids(started)
-
-        for node, p, _ in started:
-            if not node.is_running():
-                raise NodeError("Error starting {0}.".format(node.name), p)
 
         if not no_wait:
             if wait_other_notice:
@@ -488,6 +480,10 @@ class Cluster(object):
             if wait_for_binary_proto:
                 for node, p, mark in started:
                     node.wait_for_binary_interface(process=p, verbose=verbose, from_mark=mark)
+
+            for node, p, _ in started:
+                if not node.is_running():
+                    raise NodeError("Error starting {0}.".format(node.name), p)
 
         extension.post_cluster_start(self)
 
