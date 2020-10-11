@@ -673,7 +673,8 @@ class Node(object):
               quiet_start=False,
               allow_root=False,
               set_migration_task=True,
-              jvm_version=None):
+              jvm_version=None,
+              ring_delay_ms=5000):
         """
         Start the node. Options includes:
           - join_ring: if false, start the node with -Dcassandra.join_ring=False
@@ -743,6 +744,7 @@ class Node(object):
 
         args = args + ['-p', pidfile, '-Dcassandra.join_ring=%s' % str(join_ring)]
 
+        args.append('-Dcassandra.ring_delay_ms=%s'% str(ring_delay_ms))
         args.append('-Dcassandra.logdir=%s' % os.path.join(self.get_path(), 'logs'))
         if replace_token is not None:
             args.append('-Dcassandra.replace_token=%s' % str(replace_token))
