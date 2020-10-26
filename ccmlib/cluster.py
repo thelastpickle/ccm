@@ -247,7 +247,7 @@ class Cluster(object):
         node._save()
         return self
 
-    def populate(self, nodes, debug=False, tokens=None, use_vnodes=False, ipprefix='127.0.0.', ipformat=None, install_byteman=False, use_single_interface=False):
+    def populate(self, nodes, debug=False, tokens=None, use_vnodes=None, ipprefix='127.0.0.', ipformat=None, install_byteman=False, use_single_interface=False):
         """Populate a cluster with nodes
         @use_single_interface : Populate the cluster with nodes that all share a single network interface.
         """
@@ -258,7 +258,15 @@ class Cluster(object):
         node_count = nodes
         dcs = []
 
-        self.use_vnodes = use_vnodes
+        if use_vnodes is None:
+            self.use_vnodes = (
+                (tokens is not None and len(tokens) > 1)
+                    or ('num_tokens' in self._config_options
+                        and self._config_options['num_tokens'] is not None
+                        and int(self._config_options['num_tokens']) > 1))
+        else:
+            self.use_vnodes = use_vnodes
+
         if isinstance(nodes, list):
             self.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.PropertyFileSnitch'})
             node_count = 0
@@ -276,11 +284,20 @@ class Cluster(object):
             if 'node%s' % i in list(self.nodes.values()):
                 raise common.ArgumentError('Cannot create existing node node%s' % i)
 
-        if tokens is None and not use_vnodes:
-            if dcs is None or len(dcs) <= 1:
-                tokens = self.balanced_tokens(node_count)
-            else:
-                tokens = self.balanced_tokens_across_dcs(dcs)
+        if tokens is None:
+            if self.cassandra_version() >= '4' and self.use_vnodes:
+                if not 'CASSANDRA_TOKEN_PREGENERATION_DISABLED' in self._environment_variables and (self.partitioner is None or ('Murmur3' in self.partitioner or 'Random' in self.partitioner)):
+                    if dcs is None or len(dcs) <= 1:
+                        for x in xrange(0, node_count):
+                            dcs.append('dc1')
+
+                    tokens = self.generated_tokens(dcs)
+            elif not self.use_vnodes:
+                common.debug("using balanced tokens for non-vnode cluster")
+                if dcs is None or len(dcs) <= 1:
+                    tokens = self.balanced_tokens(node_count)
+                else:
+                    tokens = self.balanced_tokens_across_dcs(dcs)
 
         if not ipformat:
             ipformat = ipprefix + "%d"
@@ -349,6 +366,38 @@ class Cluster(object):
         new_tokens = [tk + (dc_count * 100) for tk in self.balanced_tokens(count)]
         tokens.extend(new_tokens)
         return tokens
+
+    def generated_tokens(self, dcs):
+        if self.cassandra_version() < '4' or (self.partitioner and not ('Murmur3' in self.partitioner or 'Random' in self.partitioner)):
+            raise common.ArgumentError("Cannot use generate-tokens script")
+
+        tokens = []
+        # all nodes are in rack1
+        current_dc = dcs[0]
+        node_count = 0
+        for dc in dcs:
+            if dc == current_dc:
+                node_count += 1
+            else:
+                self.generate_dc_tokens(node_count, tokens)
+                current_dc = dc
+                node_count = 1
+        self.generate_dc_tokens(node_count, tokens)
+        return tokens
+
+    def generate_dc_tokens(self, node_count, tokens):
+        partitioner = 'RandomPartitioner' if ( self.partitioner and 'Random' in self.partitioner) else 'Murmur3Partitioner'
+        generate_tokens = common.join_bin(self.get_install_dir(), os.path.join('tools', 'bin'), 'generate-tokens')
+        cmd_list = [generate_tokens, '-n', str(node_count), '-t', str(self._config_options.get("num_tokens")), '--rf', '3', '--partitioner', partitioner]
+        process = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ.copy())
+        process.stdout.readline()
+
+        for n in range(1,node_count+1):
+            stdout_output = process.stdout.readline()
+            node_tokens = stdout_output.decode("utf-8").replace('[','').replace(' ','').replace(']','').replace('\n','')
+            tokens.append(node_tokens)
+
+        common.debug("pregenerated tokens from cmd_list: {} are {}".format(str(cmd_list),tokens))
 
     def remove(self, node=None):
         if node is not None:
