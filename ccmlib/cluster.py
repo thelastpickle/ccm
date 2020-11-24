@@ -25,6 +25,9 @@ try:
 except ImportError:
     from urlparse import urlparse
 
+
+CLUSTER_WAIT_TIMEOUT_IN_SECS = 120
+
 class Cluster(object):
 
     def __init__(self, path, name, partitioner=None, install_dir=None, create_directory=True, version=None, verbose=False, derived_cassandra_version=None, **kwargs):
@@ -530,7 +533,7 @@ class Cluster(object):
             for node, p, mark in started:
                 try:
                     start_message = "Listening for thrift clients..." if self.cassandra_version() < "2.2" else "Starting listening for CQL clients"
-                    node.watch_log_for(start_message, timeout=kwargs.get('timeout',60), process=p, verbose=verbose, from_mark=mark)
+                    node.watch_log_for(start_message, timeout=kwargs.get('timeout',CLUSTER_WAIT_TIMEOUT_IN_SECS), process=p, verbose=verbose, from_mark=mark)
                 except RuntimeError:
                     return None
 
