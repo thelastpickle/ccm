@@ -399,7 +399,7 @@ class Cluster(object):
         generate_tokens = common.join_bin(self.get_install_dir(), os.path.join('tools', 'bin'), 'generatetokens')
         cmd_list = [generate_tokens, '-n', str(node_count), '-t', str(self._config_options.get("num_tokens")), '--rf', str(min(3,node_count)), '-p', partitioner]
         process = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ.copy())
-        # the first line is "Generating tokens for X nodes with …" and can be ignored
+        # the first line is "Generating tokens for X nodes with" and can be ignored
         process.stdout.readline()
 
         for n in range(1,node_count+1):
@@ -752,15 +752,8 @@ class Cluster(object):
         for node in self.nodelist():
             if node.data_center is not None:
                 dcs.append((node.address(), node.data_center))
-
-        content = ""
-        for k, v in dcs:
-            content = "%s%s=%s:r1\n" % (content, k, v)
-
         for node in self.nodelist():
-            topology_file = os.path.join(node.get_conf_dir(), 'cassandra-topology.properties')
-            with open(topology_file, 'w') as f:
-                f.write(content)
+            node.update_topology(dcs)
 
     def enable_ssl(self, ssl_path, require_client_auth):
         shutil.copyfile(os.path.join(ssl_path, 'keystore.jks'), os.path.join(self.get_path(), 'keystore.jks'))

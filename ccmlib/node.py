@@ -116,6 +116,7 @@ class Node(object):
         self.workloads = []
         self._dse_config_options = {}
         self.__config_options = {}
+        self._topology = [('default', 'dc1')]
         self.__install_dir = None
         self.__global_log_level = None
         self.__classes_log_level = {}
@@ -1495,6 +1496,7 @@ class Node(object):
         self._update_config()
         self.copy_config_files()
         self._update_yaml()
+        self._update_topology_file()
         # loggers changed > 2.1
         if self.get_base_cassandra_version() < 2.1:
             self._update_log4j()
@@ -1821,6 +1823,19 @@ class Node(object):
                         if os.path.isfile(f):
                             common.replace_in_file(f, '-Djava.net.preferIPv4Stack=true', '')
                     break
+
+    def update_topology(self, topology):
+        self._topology = topology
+        self._update_topology_file()
+
+    def _update_topology_file(self):
+        content = ""
+        for k, v in self._topology:
+            content = "%s%s=%s:r1\n" % (content, k, v)
+
+        topology_file = os.path.join(self.get_conf_dir(), 'cassandra-topology.properties')
+        with open(topology_file, 'w') as f:
+            f.write(content)
 
     def __update_status(self):
         if self.pid is None:
