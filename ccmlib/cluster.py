@@ -292,18 +292,15 @@ class Cluster(object):
             if self.use_vnodes:
                 # from 4.0 tokens can be pre-generated via the `allocate_tokens_for_local_replication_factor: 3` strategy
                 #  this saves time, as allocating tokens during first start is slow and non-concurrent
-                if (self.cassandra_version() >= '4'
-                        and not 'CASSANDRA_TOKEN_PREGENERATION_DISABLED' in self._environment_variables
-                        and (self.partitioner is None or ('Murmur3' in self.partitioner or 'Random' in self.partitioner))):
-
-                    if dcs is None or len(dcs) <= 1:
+                if self.can_generate_tokens() and not 'CASSANDRA_TOKEN_PREGENERATION_DISABLED' in self._environment_variables:
+                    if len(dcs) <= 1:
                         for x in xrange(0, node_count):
                             dcs.append('dc1')
 
                     tokens = self.generated_tokens(dcs)
             else:
                 common.debug("using balanced tokens for non-vnode cluster")
-                if dcs is None or len(dcs) <= 1:
+                if len(dcs) <= 1:
                     tokens = self.balanced_tokens(node_count)
                 else:
                     tokens = self.balanced_tokens_across_dcs(dcs)
@@ -376,10 +373,13 @@ class Cluster(object):
         tokens.extend(new_tokens)
         return tokens
 
-    def generated_tokens(self, dcs):
-        if self.cassandra_version() < '4' or (self.partitioner and not ('Murmur3' in self.partitioner or 'Random' in self.partitioner)):
-            raise common.ArgumentError("Cannot use generate-tokens script")
+    def can_generate_tokens(self):
+        return (self.cassandra_version() >= '4'
+                    and (self.partitioner is None or ('Murmur3' in self.partitioner or 'Random' in self.partitioner))
+                    and ('num_tokens' in self._config_options
+                            and self._config_options['num_tokens'] is not None and int(self._config_options['num_tokens']) > 1))
 
+    def generated_tokens(self, dcs):
         tokens = []
         # all nodes are in rack1
         current_dc = dcs[0]
@@ -395,6 +395,11 @@ class Cluster(object):
         return tokens
 
     def generate_dc_tokens(self, node_count, tokens):
+        if self.cassandra_version() < '4' or (self.partitioner and not ('Murmur3' in self.partitioner or 'Random' in self.partitioner)):
+            raise common.ArgumentError("generate-tokens script only for >=4.0 and Murmur3 or Random")
+        if not ('num_tokens' in self._config_options and self._config_options['num_tokens'] is not None and int(self._config_options['num_tokens']) > 1):
+            raise common.ArgumentError("Cannot use generate-tokens script without num_tokens > 1")
+
         partitioner = 'RandomPartitioner' if ( self.partitioner and 'Random' in self.partitioner) else 'Murmur3Partitioner'
         generate_tokens = common.join_bin(self.get_install_dir(), os.path.join('tools', 'bin'), 'generatetokens')
         cmd_list = [generate_tokens, '-n', str(node_count), '-t', str(self._config_options.get("num_tokens")), '--rf', str(min(3,node_count)), '-p', partitioner]
@@ -511,8 +516,7 @@ class Cluster(object):
                     mark = node.mark_log()
 
                 # if the node is going to allocate_strategy_ tokens during start, then wait_for_binary_proto=True
-                node_wait_for_binary_proto = (self.cassandra_version() >= '4' and self.use_vnodes and node.initial_token is None
-                        and (self.partitioner is None or ('Murmur3' in self.partitioner or 'Random' in self.partitioner)))
+                node_wait_for_binary_proto = (self.can_generate_tokens() and self.use_vnodes and node.initial_token is None)
 
                 p = node.start(update_pid=False, jvm_args=jvm_args, jvm_version=jvm_version,
                                profile_options=profile_options, verbose=verbose, quiet_start=quiet_start,
