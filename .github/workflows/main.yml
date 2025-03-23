@@ -49,8 +49,8 @@ jobs:
 
       - name: Smoke tests
         run: |
-          ./setup.py install
-          ./ccm create -h ; ./ccm status
+          sudo ./setup.py install
+          ./ccm create -h
           ./ccm create test -v 5.0.3 -n1 --vnodes
           ./ccm start ; ./ccm remove
           ./ccm create test --version='git:cassandra-5.0.3' -n1 --vnodes
