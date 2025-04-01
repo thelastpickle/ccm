@@ -135,6 +135,7 @@ def setup_hcd(version, verbose=False):
 
 
 def get_hcd_version(install_dir):
+    """ look for a hcd*.jar and extract the version number """
     for root, dirs, files in os.walk(install_dir):
         for file in files:
             match = re.search('^hcd(?:-core)?-([0-9.]+)(?:-.*)?\.jar', file)
@@ -144,6 +145,7 @@ def get_hcd_version(install_dir):
 
 
 def get_hcd_cassandra_version(install_dir):
+    # for this to work, the current JAVA_HOME must already be appropriate
     hcd_cmd = os.path.join(install_dir, 'bin', 'hcd')
     (output, stderr) = subprocess.Popen([hcd_cmd, "cassandra", '-v'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
     # just take the last line to avoid any possible logback log lines

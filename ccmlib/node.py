@@ -121,6 +121,10 @@ class Node(object):
         if install_dir is None and node_path is not None:
             install_dir = get_install_dir_from_cluster_conf(node_path)
         if install_dir is not None:
+            # hack, nodes can be of a different type to the cluster
+            node_class = extension.get_cluster_class(install_dir).getNodeClass()
+            if node_class is not Node:
+                return node_class.get_version_from_build(install_dir, node_path, cassandra)
             # Binary cassandra installs will have a 0.version.txt file
             version_file = os.path.join(install_dir, '0.version.txt')
             if os.path.exists(version_file):
@@ -128,11 +132,12 @@ class Node(object):
                     return LooseVersion(f.read().strip())
             # Source cassandra installs we can read from build.xml
             build = os.path.join(install_dir, 'build.xml')
-            with open(build) as f:
-                for line in f:
-                    match = re.search('name="base\.version" value="([0-9.]+)[^"]*"', line)
-                    if match:
-                        return LooseVersion(match.group(1))
+            if os.path.exists(build):
+                with open(build) as f:
+                    for line in f:
+                        match = re.search('name="base\.version" value="([0-9.]+)[^"]*"', line)
+                        if match:
+                            return LooseVersion(match.group(1))
         raise common.CCMError("Cannot find version")
 
 
@@ -319,7 +324,7 @@ class Node(object):
         Returns the address formatted for the specified (InetAddress.getHostAddress or
         InetAddressAndPort.getHostAddressAndPort)
         """
-        if version >= '4.0':
+        if version >= LooseVersion('4.0'):
             return self.address_and_port()
         else:
             return "{}".format(str(self.address()));

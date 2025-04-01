@@ -242,14 +242,15 @@ def setup_opscenter(opscenter, username, password, verbose=False):
 
 
 def get_dse_cassandra_version(install_dir):
+    # for this to work, the current JAVA_HOME must already be appropriate
     dse_cmd = os.path.join(install_dir, 'bin', 'dse')
     (output, stderr) = subprocess.Popen([dse_cmd, "cassandra", '-v'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
     # just take the last line to avoid any possible log lines
     output = output.decode('utf-8').rstrip().split('\n')[-1]
-    match = re.search('([0-9.]+)(?:-.*)?', str(output))
+    match = re.search('^([0-9.]+)(?:-.*)?', str(output))
     if match:
         return LooseVersion(match.group(1))
-    raise ArgumentError("Unable to determine Cassandra version in: %s.\n\tstdout: '%s'\n\tstderr: '%s'"
+    raise ArgumentError("Unable to determine Cassandra version using `bin/dse cassandra -v` from output: %s.\n\tstdout: '%s'\n\tstderr: '%s'"
                         % (install_dir, output, stderr))
 
 

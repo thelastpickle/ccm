@@ -55,8 +55,6 @@ class HcdNode(Node):
                     return get_hcd_cassandra_version(install_dir)
                 else:
                     return LooseVersion(hcd_version)
-            # Source cassandra installs we can read from build.xml
-            return Node.get_version_from_build(install_dir, cassandra)
         raise common.CCMError("Cannot find version")
 
 

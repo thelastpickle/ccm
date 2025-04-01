@@ -56,8 +56,6 @@ class DseNode(Node):
                     return get_dse_cassandra_version(install_dir)
                 else:
                     return LooseVersion(dse_version)
-            # Source cassandra installs we can read from build.xml
-            return Node.get_version_from_build(install_dir, cassandra)
         raise common.CCMError("Cannot find version")
 
 
@@ -93,6 +91,9 @@ class DseNode(Node):
         from ccmlib.dse.dse_cluster import setup_dse
         dir, v = setup_dse(version, self.cluster.dse_username, self.cluster.dse_password, verbose=verbose)
         return dir
+
+    def address_for_version(self, version):
+        return "{}".format(str(self.address()));
 
     def set_workloads(self, workloads):
         self.workloads = workloads
@@ -567,6 +568,7 @@ class DseNode(Node):
 
 
 def get_dse_version(install_dir):
+    """ look for a dse*.jar and extract the version number """
     for root, dirs, files in os.walk(install_dir):
         for file in files:
             match = re.search('^dse(?:-core)?-([0-9.]+)(?:-.*)?\.jar', file)
