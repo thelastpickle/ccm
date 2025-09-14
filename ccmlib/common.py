@@ -405,7 +405,8 @@ def make_cassandra_env(install_dir, node_path, update_conf=True):
         if os.path.exists(orig):
             dst = os.path.join(node_path, sh_file)
             if not is_win() or not os.path.exists(dst):
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                if not os.path.exists(os.path.dirname(dst)):
+                    os.makedirs(os.path.dirname(dst))
                 shutil.copy(orig, dst)
 
     if update_conf and not (is_win() and version_from_build >= '2.1'):
