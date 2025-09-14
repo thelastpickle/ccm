@@ -995,9 +995,9 @@ class Node(object):
                     try:
                         os.kill(int(pid), sig)
                     except ProcessLookupError:
-                        logger.info(f"Process {pid} not found")
+                        logger.info("Process %d not found" % pid)
                     except PermissionError:
-                        logger.info(f"Did not have permissions to kill {pid}")
+                        logger.info("Did not have permissions to kill %d" % pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
