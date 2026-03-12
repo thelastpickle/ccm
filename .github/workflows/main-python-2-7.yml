@@ -20,6 +20,8 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'
 
 jobs:
   lint_test_smoke:
@@ -39,7 +41,18 @@ jobs:
           sed -i '/buster-updates/d' /etc/apt/sources.list
           mkdir -p /usr/share/man/man1
           apt-get update
-          apt-get install -y curl netcat-openbsd sudo git gcc python-dev openjdk-11-jdk-headless ant
+          apt-get install -y curl netcat-openbsd sudo git gcc python-dev ant wget
+
+          # Use JDK 8 manually ( bc https://bugs.openjdk.org/browse/JDK-8287073 )
+          JDK8_URL="https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u432-b06/OpenJDK8U-jdk_x64_linux_hotspot_8u432b06.tar.gz"
+          JDK8_SHA256="abaaa90deadf51bd28921453baf2992b3dff6171bb7142f5bdd14ef269f7b245"
+          wget -q "$JDK8_URL" -O jdk8.tar.gz
+          echo "$JDK8_SHA256  jdk8.tar.gz" | sha256sum -c -
+          tar -xzf jdk8.tar.gz -C /usr/lib/jvm/
+          mv /usr/lib/jvm/jdk8u432-b06 /usr/lib/jvm/java-8-openjdk-amd64
+          update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/bin/java 1
+          update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/bin/java
+          rm jdk8.tar.gz
 
       - name: Set up Python environment
         run: |
@@ -56,7 +69,7 @@ jobs:
       - name: Smoke tests
         shell: bash
         run: |
-          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
           # hack to fix setup.cfg not being parsed by pbr (FIXME why isn't pbr working...)
           export PBR_VERSION=$(grep version setup.cfg | awk -F= '{print $2}' | xargs)
           ./setup.py install
@@ -67,8 +80,17 @@ jobs:
             for i in {1..9}; do
               echo "Checking nc -z 127.0.0.1 7000"
               while nc -z 127.0.0.1 7000 ; do echo . ; ./ccm stop || true ; sleep 1 ; done
-              ./ccm start -v --root && ./ccm remove && return 0 || echo retrying
-              sleep 20
+              if ./ccm start -v --root; then
+                ./ccm remove && return 0
+              else
+                echo "=== Start failed, showing logs ==="
+                find ~/.ccm -name "startup-*-stderr.log" -o -name "startup-*-stdout.log" -o -name "system.log" | while read f; do
+                  echo "=== $f ==="
+                  tail -100 "$f" 2>/dev/null || true
+                done
+                echo "=== Retrying in 20 seconds ==="
+                sleep 20
+              fi
             done
             echo "ccm start failed after 9 attempts"
             exit 1

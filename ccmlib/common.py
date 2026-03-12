@@ -755,7 +755,7 @@ def get_supported_jdk_versions_internal(path, pattern):
             for line in f:
                 match = re.search(pattern, line)
                 if match:
-                    versions = match.group(1).split(',')
+                    versions = re.split(r'[,\s]+', match.group(1))
                     versions = [8 if v == '1.8' else int(v) for v in versions]
                     return versions
     return None
@@ -773,7 +773,7 @@ def get_supported_jdk_versions_from_dist(install_dir):
     if versions is None:
         # binary distributions have supported Java versions specified in bin/cassandra.in.sh since 5.1
         versions = get_supported_jdk_versions_internal(os.path.join(install_dir, 'bin', 'cassandra.in.sh'),
-                                                       'java_versions_supported=([0-9.,]+)')
+                                                       'java_versions_supported="?([0-9., ]+)"?')
 
     if versions and len(versions) > 0:
         info("Supported Java versions for Cassandra distribution in '{}': {}".format(install_dir, versions))

@@ -199,10 +199,17 @@ class NodeStartCmd(Cmd):
                             jvm_version=self.options.jvm_version)
         except NodeError as e:
             print_(str(e), file=sys.stderr)
-            print_("Standard error output is:", file=sys.stderr)
-            e.process.stderr_file.seek(0)
-            for line in e.process.stderr_file.readlines():
-                print_(line.rstrip('\n'), file=sys.stderr)
+            if e.process is not None:
+                if hasattr(e.process, 'stderr_file') and e.process.stderr_file is not None:
+                    print_("Standard error output is:", file=sys.stderr)
+                    e.process.stderr_file.seek(0)
+                    for line in e.process.stderr_file.readlines():
+                        print_(line.rstrip('\n'), file=sys.stderr)
+                if hasattr(e.process, 'stdout_file') and e.process.stdout_file is not None:
+                    print_("Standard output is:", file=sys.stderr)
+                    e.process.stdout_file.seek(0)
+                    for line in e.process.stdout_file.readlines():
+                        print_(line.rstrip('\n'), file=sys.stderr)
             exit(1)
 
 
