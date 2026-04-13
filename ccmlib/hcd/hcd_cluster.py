@@ -39,7 +39,13 @@ except ImportError:
 
 
 HCD_CASSANDRA_CONF_DIR = "resources/cassandra/conf"
-HCD_ARCHIVE = "https://downloads.datastax.com/hcd/hcd-%s-bin.tar.gz"
+
+# HCD binaries are now gated and require authentication to download.
+# Download DSE and OpsCenter from: https://downloads.datastax.com/#hcd
+# Place downloaded files in ~/Downloads/
+# Alternatively, configure custom URLs in ~/.ccm/config under [repositories] section.
+# Credentials for custom URLs can be configured in ~/.ccm/.hcd.ini
+HCD_ARCHIVE = "file://~/Downloads/hcd-%s-bin.tar.gz"
 
 
 def isHcd(install_dir, options=None):
@@ -76,6 +82,12 @@ class HcdCluster(Cluster):
 
 
     def __init__(self, path, name, partitioner=None, install_dir=None, create_directory=True, version=None, verbose=False, derived_cassandra_version=None, options=None):
+        self.load_credentials_from_file(options.hcd_credentials_file if options else None)
+        if options and options.hcd_username:
+            self.hcd_username = options.hcd_username
+        if options and options.hcd_password:
+            self.hcd_password = options.hcd_password
+
         self._cassandra_version = None
         if derived_cassandra_version:
             self._cassandra_version = derived_cassandra_version
@@ -88,6 +100,24 @@ class HcdCluster(Cluster):
     def load_from_repository(self, version, verbose):
         return setup_hcd(version, verbose)
 
+    def load_credentials_from_file(self, hcd_credentials_file):
+        # Use .hcd.ini if it exists in the default .ccm directory.
+        if hcd_credentials_file is None:
+            creds_file = os.path.join(common.get_default_path(), '.hcd.ini')
+            if os.path.isfile(creds_file):
+                hcd_credentials_file = creds_file
+
+        if hcd_credentials_file is not None:
+            parser = ConfigParser.RawConfigParser()
+            parser.read(hcd_credentials_file)
+            if parser.has_section('hcd_credentials'):
+                if parser.has_option('hcd_credentials', 'hcd_username'):
+                    self.dse_username = parser.get('hcd_credentials', 'hcd_username')
+                if parser.has_option('hcd_credentials', 'hcd_password'):
+                    self.dse_password = parser.get('hcd_credentials', 'hcd_password')
+            else:
+                common.warning("{} does not contain a 'hcd_credentials' section.".format(hcd_credentials_file))
+
     def create_node(self, name, auto_bootstrap, thrift_interface, storage_interface, jmx_port, remote_debug_port, initial_token, save=True, binary_interface=None, byteman_port='0', environment_variables=None, derived_cassandra_version=None, **kwargs):
         return HcdNode(name, self, auto_bootstrap, thrift_interface, storage_interface, jmx_port, remote_debug_port, initial_token, save, binary_interface, byteman_port, environment_variables=environment_variables, derived_cassandra_version=derived_cassandra_version, **kwargs)
 
@@ -97,15 +127,21 @@ class HcdCluster(Cluster):
         return self._cassandra_version
 
 
-def download_hcd_version(version, verbose=False):
+def download_hcd_version(version, username, password, verbose=False):
     url = HCD_ARCHIVE
     if repository.CCM_CONFIG.has_option('repositories', 'hcd'):
         url = repository.CCM_CONFIG.get('repositories', 'hcd')
 
     url = url % version
+    if url.startswith('file://~'):
+        url = 'file://' + os.path.expanduser(url[7:])
     _, target = tempfile.mkstemp(suffix=".tar.gz", prefix="ccm-")
     try:
-        repository.__download(url, target, show_progress=verbose)
+        if username is None:
+            common.warning("No hcd username detected, specify one using --hcd-username or passing in a credentials file using --hcd-credentials.")
+        if password is None:
+            common.warning("No hcd password detected, specify one using --hcd-password or passing in a credentials file using --hcd-credentials.")
+        repository.__download(url, target, username=username, password=password, show_progress=verbose)
         common.debug("Extracting {} as version {} ...".format(target, version))
         tar = tarfile.open(target)
         dir = tar.next().name.split("/")[0]  # pylint: disable=all
